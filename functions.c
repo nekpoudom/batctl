@@ -830,10 +830,6 @@ static int vlan_get_link_parse(struct nl_msg *msg, void *arg)
 
 	/* get parent link name */
 	idx = *(int *)nla_data(tb[IFLA_LINK]);
-	free(nl_arg->iface);
-	nl_arg->iface = malloc(IFNAMSIZ + 1);
-	if (!nl_arg->iface)
-		goto err;
 
 	if (!if_indextoname(idx, nl_arg->iface))
 		goto err;
@@ -851,12 +847,12 @@ err:
 /**
  * vlan_get_link - convert a VLAN interface into its parent one
  * @ifname: the interface to convert
- * @parent: buffer where the parent interface name will be written (allocated by
- *  this function)
+ * @parent: buffer where the parent interface name will be written
+ *  (minimum IF_NAMESIZE)
  *
  * Returns the vlan identifier on success or -1 on error
  */
-int vlan_get_link(const char *ifname, char **parent)
+int vlan_get_link(const char *ifname, char *parent)
 {
 	struct nl_sock *sock;
 	int ret;
@@ -866,11 +862,9 @@ int vlan_get_link(const char *ifname, char **parent)
 	};
 	struct nl_cb *cb = NULL;
 	struct vlan_get_link_nl_arg arg = {
-		.iface = NULL,
+		.iface = parent,
 		.vid = -1,
 	};
-
-	*parent = NULL;
 
 	sock = nl_socket_alloc();
 	if (!sock)
@@ -893,8 +887,6 @@ int vlan_get_link(const char *ifname, char **parent)
 	ret = nl_recvmsgs(sock, cb);
 	if (ret < 0)
 		goto err;
-
-	*parent = arg.iface;
 
 err:
 	if (cb)
@@ -1029,13 +1021,13 @@ err_free_sock:
 
 int check_mesh_iface(char *mesh_iface)
 {
-	char *base_dev = NULL;
 	char path_buff[PATH_BUFF_LEN];
+	char base_dev[IF_NAMESIZE];
 	int ret = -1, vid;
 	DIR *dir;
 
 	/* use the parent interface if this is a VLAN */
-	vid = vlan_get_link(mesh_iface, &base_dev);
+	vid = vlan_get_link(mesh_iface, base_dev);
 	if (vid >= 0)
 		snprintf(path_buff, PATH_BUFF_LEN, SYS_VLAN_PATH, base_dev, vid);
 	else
@@ -1050,9 +1042,6 @@ int check_mesh_iface(char *mesh_iface)
 
 	ret = 0;
 out:
-	if (base_dev)
-		free(base_dev);
-
 	return ret;
 }
 
